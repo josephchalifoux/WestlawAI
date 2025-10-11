@@ -2,10 +2,8 @@
   "name": "pleadings-pro-bootstrap",
   "private": true,
   "scripts": {
-    "prebuild": "node -e \"require('fs').mkdirSync('.gen',{recursive:true}); require('fs').writeFileSync('.gen/start.js', Buffer.from(process.env.BOOTSTRAP_JS,'base64'));\"",
-    "build": "node .gen/start.js && npm run --prefix apps/web build",
+    "prebuild": "node -e \"require('fs').mkdirSync('.gen',{recursive:true}); require('fs').writeFileSync('.gen/start.js', process.env.BOOTSTRAP_JS);\"",
+    "build": "node .gen/start.js && npm install --prefix apps/web && npm run --prefix apps/web build",
     "start": "npm run --prefix apps/web start"
-  },
-  "devDependencies": {},
-  "dependencies": {}
+  }
 }
