@@ -1,13 +1,13 @@
 {
   "name": "pleadings-pro-bootstrap",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "private": true,
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "prebuild": "node -e \"require('fs').mkdirSync('.gen',{recursive:true}); require('fs').writeFileSync('.gen/start.js', process.env.BOOTSTRAP_JS);\"",
-    "build": "node .gen/start.js && node -e \"try{require('fs').rmSync('apps/web/next.config.ts',{force:true})}catch{}\" && (npm --prefix apps/web ci || npm --prefix apps/web install) && npm --prefix apps/web run build",
+    "build": "node .gen/start.js && node -e \"const fs=require('fs'),path=require('path');function rm(p){try{fs.rmSync(p,{force:true})}catch{}}function walk(d){if(!fs.existsSync(d))return;for(const e of fs.readdirSync(d,{withFileTypes:true})){const p=path.join(d,e.name);if(e.isDirectory())walk(p);else if(e.name==='next.config.ts'){rm(p);console.log('Removed',p);}}}walk(process.cwd()); rm('apps/web/next.config.ts');\" && (npm --prefix apps/web ci || npm --prefix apps/web install) && npm --prefix apps/web run build",
     "start": "npm --prefix apps/web start"
   }
 }
