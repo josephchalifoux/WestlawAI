@@ -1,9 +1,13 @@
 {
   "name": "pleadings-pro-bootstrap",
+  "version": "0.0.1",
   "private": true,
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "prebuild": "node -e \"require('fs').mkdirSync('.gen',{recursive:true}); require('fs').writeFileSync('.gen/start.js', process.env.BOOTSTRAP_JS);\"",
-    "build": "node .gen/start.js && npm install --prefix apps/web && npm run --prefix apps/web build",
-    "start": "npm run --prefix apps/web start"
+    "build": "node .gen/start.js && node -e \"try{require('fs').rmSync('apps/web/next.config.ts',{force:true})}catch{}\" && (npm --prefix apps/web ci || npm --prefix apps/web install) && npm --prefix apps/web run build",
+    "start": "npm --prefix apps/web start"
   }
 }
