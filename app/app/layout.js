@@ -1,8 +1,4 @@
-export const metadata = {
-  title: "Pleadings Pro",
-  description: "Minimal Next.js app deployed on Vercel"
-};
-
+export const metadata = { title: "Pleadings Pro", description: "Minimal Next.js app" };
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
