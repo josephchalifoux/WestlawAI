@@ -3,7 +3,7 @@ export const metadata = {
   description: "Minimal Next.js app deployed on Vercel"
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({ children }) {
   return (
     <html lang="en">
       <body style={{ fontFamily: "system-ui, sans-serif", margin: 0, padding: 24 }}>
