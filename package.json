@@ -1,12 +1,13 @@
 {
   "name": "pleadings-pro-bootstrap",
-  "version": "0.0.5",
   "private": true,
+  "version": "0.0.6",
   "engines": { "node": ">=18" },
   "scripts": {
     "prebuild": "node -e \"require('fs').mkdirSync('.gen',{recursive:true}); require('fs').writeFileSync('.gen/start.js', process.env.BOOTSTRAP_JS);\"",
-    "clean:web": "node -e \"const fs=require('fs'),p=require('path');function rm(f){try{fs.rmSync(f,{recursive:true,force:true});console.log('Removed',f);}catch{}}const R=process.cwd();['apps/web/next.config.ts','apps/web/next.config.js','next.config.ts','next.config.js'].forEach(x=>rm(p.join(R,x)));\"",
-    "build": "node .gen/start.js && npm run clean:web && (npm --prefix apps/web ci || npm --prefix apps/web install) && npm --prefix apps/web run build",
-    "start": "npm --prefix apps/web start"
-  }
+    "build": "node -e \"const fs=require('fs');['app','apps/web/app','./app','./apps/web/app'].forEach(p=>{try{fs.rmSync(p,{recursive:true,force:true});console.log('Removed',p);}catch{}});\" && node .gen/start.js && npm --prefix apps/web run build",
+    "start": "npm --prefix apps/web run start"
+  },
+  "dependencies": {},
+  "devDependencies": {}
 }
