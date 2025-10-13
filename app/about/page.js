@@ -1,4 +1,4 @@
-export const metadata = { title: 'About • Pleadings Pro' };
+export const metadata = { title: 'About • WestlawAI' };
 
 export default function About() {
   return (
