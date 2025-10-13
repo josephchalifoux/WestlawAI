@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+:root { --rule:#e5e7eb; }
+html,body{ height:100%; }
+body{ @apply bg-white text-zinc-950; }
+.container{ @apply max-w-6xl mx-auto px-6 sm:px-8; }
+.rule{ border-top:1px solid var(--rule); }
