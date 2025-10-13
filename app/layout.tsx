@@ -1,3 +1,4 @@
+import "./globals.css";
 export const metadata = {
 title: "WestlawAI — Draft court‑ready pleadings",
 description: "Minimal UI. Maximal clarity. Draft pleadings with provenance."
