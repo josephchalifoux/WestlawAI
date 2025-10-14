@@ -1,57 +1,55 @@
-// app/api/upload/route.ts
-export const runtime = "nodejs"; // PDF.js requires Node APIs
+export const runtime = "nodejs"; // pdf.js is Node-only
 
-// We'll import PDF.js' ESM build dynamically to avoid bundler quirks.
-// Using the legacy ESM build is recommended for older environments.
-async function extractPdfText(buf: Buffer): Promise<string> {
-  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(buf) });
-  const pdf = await loadingTask.promise;
+// Minimal text extraction with Mozilla pdf.js on the server.
+// No worker is used; we run in "legacy" build that works under Node.
+async function extractTextFromPdf(buf: Buffer): Promise<string> {
+  // Dynamic import keeps webpack happy and avoids edge bundling.
+  const pdfjs = (await import("pdfjs-dist/legacy/build/pdf.mjs")) as any;
 
+  // Options disable features that aren't needed server-side.
+  const loading = pdfjs.getDocument({
+    data: new Uint8Array(buf),
+    useWorkerFetch: false,
+    isEvalSupported: false,
+    disableFontFace: true
+  });
+
+  const doc = await loading.promise;
   let out = "";
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const tc = await page.getTextContent();
-    const pageText = (tc.items as any[])
-      .map((it) => (typeof it.str === "string" ? it.str : ""))
+
+  for (let pageNum = 1; pageNum <= doc.numPages; pageNum++) {
+    const page = await doc.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    // textContent.items is an array of glyph objects; pick .str where present
+    const line = textContent.items
+      .map((it: any) => (typeof it?.str === "string" ? it.str : ""))
       .join(" ");
-    out += pageText + "\n";
+    out += line + "\n";
   }
+
+  try { await doc.destroy?.(); } catch {}
   return out.trim();
 }
 
 export async function POST(req: Request) {
   const form = await req.formData();
   const file = form.get("file") as File | null;
-  if (!file) return new Response("No file uploaded", { status: 400 });
+  if (!file) return new Response("No file", { status: 400 });
 
-  const name = ((file as any)?.name || "").toLowerCase();
-  const type = ((file as any)?.type || "").toLowerCase();
+  const name = (file as any)?.name ?? "";
+  const type = (file as any)?.type ?? "";
   const buf = Buffer.from(await file.arrayBuffer());
 
-  // PDF
-  if (name.endsWith(".pdf") || type === "application/pdf") {
+  // Only handle PDFs for now
+  if (name.toLowerCase().endsWith(".pdf") || type === "application/pdf") {
     try {
-      const text = await extractPdfText(buf);
+      const text = await extractTextFromPdf(buf);
       return Response.json({ kind: "pdf", text });
-    } catch (e: any) {
-      return Response.json({ error: `PDF parse failed: ${e?.message || e}` }, { status: 500 });
+    } catch (err) {
+      console.error("PDF parse failed:", err);
+      return new Response("Parse failed", { status: 502 });
     }
   }
 
-  // TXT
-  if (name.endsWith(".txt") || type.startsWith("text/")) {
-    return Response.json({ kind: "txt", text: buf.toString("utf8") });
-  }
-
-  // For now, we’ll stub DOCX. (We can wire DOCX with Mammoth after deploy is green.)
-  if (name.endsWith(".docx")) {
-    return Response.json({
-      kind: "docx",
-      text: "",
-      note: "DOCX parsing will be enabled after PDF deploy is stable."
-    });
-  }
-
-  return new Response("Unsupported file type. Upload .pdf or .txt.", { status: 415 });
+  return Response.json({ kind: "unsupported" });
 }
