@@ -1,11 +1,14 @@
-// app/robots.ts
-import type { MetadataRoute } from "next";
+import type { MetadataRoute } from 'next';
+
+const BASE = process.env.NEXT_PUBLIC_BASE_URL || 'https://westlawai.com';
 
 export default function robots(): MetadataRoute.Robots {
-  const host = "https://westlawai.com";
   return {
-    rules: [{ userAgent: "*", allow: "/" }],
-    sitemap: `${host}/sitemap.xml`,
-    host,
+    rules: {
+      userAgent: '*',
+      allow: '/',
+    },
+    sitemap: [`${BASE}/sitemap.xml`],
+    host: BASE,
   };
 }
