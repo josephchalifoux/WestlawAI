@@ -15,7 +15,7 @@
     "framer-motion": "11.2.10",
     "lucide-react": "0.446.0",
     "@supabase/supabase-js": "^2.47.5",
-    "pdf-parse": "1.1.1"
+    "pdf-parse": "1.1.0"
   },
   "devDependencies": {
     "autoprefixer": "10.4.19",
