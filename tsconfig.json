@@ -20,8 +20,7 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    "types/**/*.d.ts",
-    "global.d.ts"
+    "types/**/*.d.ts"
   ],
   "exclude": ["node_modules"]
 }
