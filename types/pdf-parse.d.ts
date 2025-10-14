@@ -1,4 +1,3 @@
-// types/pdf-parse.d.ts
 declare module "pdf-parse" {
   export interface PDFParseResult {
     text: string;
@@ -9,8 +8,9 @@ declare module "pdf-parse" {
     version?: string;
   }
 
-  type Data = Buffer | Uint8Array | ArrayBuffer;
+  type PDFData = Buffer | Uint8Array | ArrayBuffer;
 
-  function pdfParse(data: Data, options?: any): Promise<PDFParseResult>;
+  // pdf-parse is CommonJS; Next/TS will synthesize default with esModuleInterop
+  function pdfParse(data: PDFData, options?: unknown): Promise<PDFParseResult>;
   export default pdfParse;
 }
