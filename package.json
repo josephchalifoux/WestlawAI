@@ -5,8 +5,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-    "postinstall": "patch-package"
+    "lint": "next lint"
   },
   "dependencies": {
     "next": "14.2.5",
@@ -16,7 +15,7 @@
     "framer-motion": "11.2.10",
     "lucide-react": "0.446.0",
     "@supabase/supabase-js": "^2.47.5",
-    "pdf-parse": "1.1.1"
+    "pdf-parse-debugging-disabled": "1.1.1"
   },
   "devDependencies": {
     "autoprefixer": "10.4.19",
@@ -25,10 +24,6 @@
     "typescript": "5.4.5",
     "@types/node": "20.11.30",
     "@types/react": "18.2.66",
-    "@types/react-dom": "18.2.22",
-    "patch-package": "^8.0.0"
-  },
-  "overrides": {
-    "pdf-parse": "1.1.1"
+    "@types/react-dom": "18.2.22"
   }
 }
