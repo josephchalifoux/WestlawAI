@@ -1,4 +1,3 @@
-// types/pdf-parse.d.ts
 declare module "pdf-parse" {
   export interface PDFParseResult {
     text: string;
