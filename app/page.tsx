@@ -1,3 +1,4 @@
+// app/page.tsx
 export default function Page() {
   return (
     <div>
@@ -8,39 +9,42 @@ export default function Page() {
             WestlawAI
           </div>
           <nav className="hidden items-center gap-6 text-sm text-zinc-700 sm:flex">
-            <a className="hover:text-black" href="#features">Features</a>
-            <a className="hover:text-black" href="#templates">Templates</a>
-            <a className="hover:text-black" href="#pricing">Pricing</a>
-            <a className="hover:text-black" href="/draft">Start drafting</a>
+            <a className="hover:text-black" href="/analyze">Analyze</a>
+            <a className="hover:text-black" href="/draft">Draft</a>
+            <a className="hover:text-black" href="/signin">Sign in</a>
           </nav>
         </div>
       </header>
 
       <main className="mx-auto w-full max-w-6xl px-6 sm:px-8 grid grid-cols-1 items-end gap-10 py-16 md:grid-cols-12 md:py-24">
-        <h1 className="col-span-1 md:col-span-8 text-4xl/[1.05] sm:text-5xl/[1.05] md:text-6xl/[1.03] font-semibold tracking-tight">
-          Draft <span className="underline decoration-zinc-900 decoration-[2px] underline-offset-4">court-ready</span> pleadings
-          with exactness & essentiality.
+        <h1 className="col-span-1 md:col-span-7 text-4xl/[1.05] sm:text-5xl/[1.05] md:text-6xl/[1.03] font-semibold tracking-tight">
+          Minimal interface. <br /> Court-ready outputs.
         </h1>
-        <div className="col-span-1 md:col-span-4">
-          <p className="text-base text-zinc-700">
-            Minimal UI. Maximal clarity. Search law with provenance, assemble arguments, and export to DOCX/PDF without the noise.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <a href="/draft" className="inline-flex items-center gap-2 rounded-full border border-zinc-900 px-4 py-2 text-sm font-medium hover:bg-zinc-900 hover:text-white transition-colors">
-              Start drafting →
-            </a>
-            <a href="#how" className="text-sm text-zinc-700 hover:text-black">How it works</a>
+
+        <div className="col-span-1 md:col-span-5">
+          <div className="rounded-2xl border border-zinc-200 p-4">
+            <textarea
+              placeholder="Start a conversation… e.g., 'I need to draft a motion to dismiss for lack of personal jurisdiction in Florida.'"
+              className="h-28 w-full rounded-xl border border-zinc-300 p-3 outline-none focus:ring-2 focus:ring-zinc-900"
+            />
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <a href="/draft" className="rounded-full border border-zinc-900 px-4 py-2 text-sm font-medium hover:bg-zinc-900 hover:text-white text-center">Draft pleading</a>
+              <a href="/analyze" className="rounded-full border border-zinc-900 px-4 py-2 text-sm font-medium hover:bg-zinc-900 hover:text-white text-center">Analyze / upload</a>
+              <a href="/draft" className="rounded-full border border-zinc-900 px-4 py-2 text-sm font-medium hover:bg-zinc-900 hover:text-white text-center">Enter fact set</a>
+              <a href="/draft" className="rounded-full border border-zinc-900 px-4 py-2 text-sm font-medium hover:bg-zinc-900 hover:text-white text-center">Legal research</a>
+            </div>
           </div>
+          <p className="mt-4 text-sm text-zinc-700">
+            WestlawAI suggests plans, drafts with grounded citations, checks local rules, and exports to DOCX/PDF in your court’s style.
+          </p>
         </div>
       </main>
 
-      <div className="border-t border-zinc-200" />
-
-      <section id="features" className="mx-auto w-full max-w-6xl px-6 sm:px-8 grid grid-cols-1 gap-10 py-12 sm:py-16 md:grid-cols-12">
+      <section className="mx-auto w-full max-w-6xl px-6 sm:px-8 grid grid-cols-1 gap-10 py-12 sm:py-16 md:grid-cols-12">
         {[
-          { t: "Editorial layout", b: "Large type, strict grid, and hairline rules keep focus on the argument—not the UI." },
-          { t: "Provenance-first", b: "Hybrid search (keyword + embeddings) with pinned citations you can verify." },
-          { t: "Exports that hold up", b: "One click DOCX and PDF exports preserve structure, headings, and citations." },
+          { t: "Plan → Draft → Export", b: "Approve a plan before drafting; add notices/certificates; export only when ready." },
+          { t: "Provenance-first", b: "Hybrid search with pinned citations and pincites; reviewer model enforces sources." },
+          { t: "Court styles", b: "Fonts, margins, caption & title rules remembered per case/judge." },
         ].map((f) => (
           <div key={f.t} className="md:col-span-4">
             <h3 className="text-base font-semibold tracking-tight">{f.t}</h3>
