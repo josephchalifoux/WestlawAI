@@ -8,7 +8,7 @@ export async function POST(req: Request) {
   const file = form.get("file") as File | null;
 
   if (!file) {
-    return new Response("No file provided", { status: 400 });
+    return new Response("No file", { status: 400 });
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
@@ -21,20 +21,15 @@ export async function POST(req: Request) {
     return Response.json({ kind: "pdf", text: out?.text ?? "" });
   }
 
-  // TXT
-  if (name.endsWith(".txt") || type === "text/plain") {
-    return Response.json({ kind: "txt", text: buf.toString("utf8") });
+  // Plain text
+  if (type.startsWith("text/")) {
+    const text = buf.toString("utf8");
+    return Response.json({ kind: "text", text });
   }
 
-  // Basic DOCX fallback (optional; can be removed if you don’t want it)
+  // DOCX is stubbed for now
   if (name.endsWith(".docx")) {
-    try {
-      const mammoth = await import("mammoth");
-      const { value } = await mammoth.extractRawText({ buffer: buf });
-      return Response.json({ kind: "docx", text: value ?? "" });
-    } catch {
-      return Response.json({ kind: "docx", text: "" });
-    }
+    return Response.json({ kind: "docx", text: "" });
   }
 
   return Response.json({ kind: "unsupported" });
