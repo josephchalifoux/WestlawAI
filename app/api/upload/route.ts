@@ -10,7 +10,7 @@ export async function POST(req: Request) {
   const file = form.get("file") as File | null;
 
   if (!file) {
-    return Response.json({ error: "No file uploaded" }, { status: 400 });
+    return new Response("No file uploaded", { status: 400 });
   }
 
   const name = (file.name || "").toLowerCase();
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
   // PDF
   if (name.endsWith(".pdf") || type === "application/pdf") {
-    const out = await pdfParse(buf as any);
+    const out = await pdfParse(buf);
     return Response.json({ kind: "pdf", text: out?.text ?? "" });
   }
 
@@ -38,5 +38,5 @@ export async function POST(req: Request) {
     return Response.json({ kind: "txt", text: buf.toString("utf8") });
   }
 
-  return Response.json({ error: "Unsupported file type. Upload .pdf, .docx, or .txt" }, { status: 415 });
+  return new Response("Unsupported file type. Upload .pdf, .docx, or .txt", { status: 415 });
 }
