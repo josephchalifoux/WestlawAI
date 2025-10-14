@@ -1,11 +1,11 @@
 // app/api/upload/route.ts
-import type { NextRequest } from "next/server";
-
+// Node runtime required for Buffer-based parsers
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function POST(req: NextRequest) {
-  // Expect a multipart/form-data with field "file"
+import pdfParse from "pdf-parse";
+
+export async function POST(req: Request) {
   const form = await req.formData();
   const file = form.get("file") as File | null;
 
@@ -13,30 +13,30 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: "No file uploaded" }, { status: 400 });
   }
 
-  const name = file.name || "";
-  const type = (file.type as string) || "";
+  const name = (file.name || "").toLowerCase();
+  const type = (file.type || "").toLowerCase();
   const buf = Buffer.from(await file.arrayBuffer());
 
   // PDF
   if (name.endsWith(".pdf") || type === "application/pdf") {
-    // @ts-ignore - no official types available for 'pdf-parse'
-    const pdfParse = (await import("pdf-parse")).default as any;
-    const out = await pdfParse(buf);
-    return Response.json({ kind: "pdf", text: out?.text || "" });
+    const out = await pdfParse(buf as any);
+    return Response.json({ kind: "pdf", text: out?.text ?? "" });
   }
 
   // DOCX
   if (
     name.endsWith(".docx") ||
-    type ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
-    // @ts-ignore - no official types available for 'mammoth'
-    const mammoth = (await import("mammoth")) as any;
+    const mammoth = await import("mammoth");
     const out = await mammoth.extractRawText({ buffer: buf });
-    return Response.json({ kind: "docx", text: out?.value || "" });
+    return Response.json({ kind: "docx", text: out?.value ?? "" });
   }
 
-  // Fallback: treat as utf-8 text
-  return Response.json({ kind: "text", text: buf.toString("utf8") });
+  // TXT or other text/*
+  if (name.endsWith(".txt") || type.startsWith("text/")) {
+    return Response.json({ kind: "txt", text: buf.toString("utf8") });
+  }
+
+  return Response.json({ error: "Unsupported file type. Upload .pdf, .docx, or .txt" }, { status: 415 });
 }
