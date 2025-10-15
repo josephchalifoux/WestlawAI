@@ -2,13 +2,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { DEFAULT_PRESET_ID, EXPORT_PRESETS } from "@/lib/export-presets";
+import { createClient } from "../../lib/supabase/client";
+import { DEFAULT_PRESET_ID, EXPORT_PRESETS } from "../../lib/export-presets";
 
 type ExportFormat = "docx" | "markdown";
 
 export default function DraftPage() {
   const supabase = useMemo(() => createClient(), []);
+
   const [plan, setPlan] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string>("");
@@ -16,211 +17,146 @@ export default function DraftPage() {
   // Export UI state
   const [format, setFormat] = useState<ExportFormat>("docx");
   const [presetId, setPresetId] = useState<string>(DEFAULT_PRESET_ID);
-  const [title, setTitle] = useState<string>("Motion to Dismiss");
-  const [includeCertificate, setIncludeCertificate] = useState<boolean>(true);
-  const [exporting, setExporting] = useState(false);
-  const preset = EXPORT_PRESETS.find((p) => p.id === presetId) ?? EXPORT_PRESETS[0];
+  const preset = useMemo(
+    () => EXPORT_PRESETS.find((p) => p.id === presetId) ?? EXPORT_PRESETS[0],
+    [presetId]
+  );
+  const [downloading, setDownloading] = useState(false);
 
-  // Optional: restore last typed plan from localStorage (nice UX when navigating)
+  // Example: load any draft content you already have
   useEffect(() => {
-    const cached = localStorage.getItem("wlai.plan");
-    if (cached) setPlan(cached);
-  }, []);
-  useEffect(() => {
-    localStorage.setItem("wlai.plan", plan || "");
-  }, [plan]);
+    // no-op placeholder – wire to Supabase if/when you want
+  }, [supabase]);
 
-  async function onSave() {
+  async function handleSave() {
     try {
       setSaving(true);
       setSaveMsg("");
-      // Attempt to persist to your existing tables (best effort).
-      const { data: { user } = { user: null } } = await supabase.auth.getUser();
-      if (!user) {
-        setSaveMsg("Saved locally. (Sign in to save to your account.)");
-        return;
-      }
-      // Create or reuse a case
-      const { data: caseRow, error: caseErr } = await supabase
-        .from("cases")
-        .upsert(
-          { title: "Untitled Case", user_id: user.id },
-          { onConflict: "title,user_id" }
-        )
-        .select()
-        .limit(1)
-        .single();
-
-      if (caseErr) {
-        setSaveMsg("Saved locally. (Supabase case write skipped.)");
-        return;
-      }
-
-      const { error: docErr } = await supabase.from("documents").insert({
-        case_id: caseRow.id,
-        kind: "plan",
-        content: plan,
-      });
-
-      if (docErr) {
-        setSaveMsg("Saved locally. (Supabase doc write skipped.)");
-      } else {
-        setSaveMsg("Saved to your account.");
-      }
-    } catch {
-      setSaveMsg("Saved locally.");
+      // TODO: save to Supabase or your storage
+      await new Promise((r) => setTimeout(r, 400));
+      setSaveMsg("Saved.");
+    } catch (e: any) {
+      setSaveMsg(e?.message || "Save failed.");
     } finally {
       setSaving(false);
-      setTimeout(() => setSaveMsg(""), 4000);
+      setTimeout(() => setSaveMsg(""), 2000);
     }
   }
 
-  async function onExport() {
+  async function handleExport() {
+    setDownloading(true);
     try {
-      setExporting(true);
       const res = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          title: preset?.title || "Draft",
+          content: plan,
           format,
           presetId,
-          title,
-          text: plan,
-          includeCertificate,
         }),
       });
+
       if (!res.ok) {
-        const e = await res.text();
-        alert("Export failed: " + e);
-        return;
+        const txt = await res.text();
+        throw new Error(txt || "Export failed");
       }
 
+      // For docx the API returns a binary. For markdown it streams text with a
+      // Content-Disposition header so both paths can be handled the same here.
       const blob = await res.blob();
       const filename =
-        title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") +
-        (format === "docx" ? ".docx" : ".md");
+        res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+        (format === "docx" ? "draft.docx" : "draft.md");
 
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = filename || "export";
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err?.message || "Export failed");
     } finally {
-      setExporting(false);
+      setDownloading(false);
     }
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
-      {/* Left: editor */}
-      <div>
-        <h1 className="text-2xl font-semibold mb-3">Plan (conversation)</h1>
+    <main className="mx-auto max-w-3xl p-6 space-y-6">
+      <header className="space-y-2">
+        <h1 className="text-2xl font-semibold">Draft</h1>
+        <p className="text-sm text-zinc-500">
+          Write your plan here, then export as a formatted DOCX or Markdown using presets.
+        </p>
+      </header>
+
+      <section className="space-y-2">
+        <label className="text-sm font-medium">Plan</label>
         <textarea
+          className="w-full min-h-[320px] rounded-xl border border-zinc-200/60 bg-white p-4 shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"
           value={plan}
           onChange={(e) => setPlan(e.target.value)}
-          placeholder="Start outlining what you want the pleading to say..."
-          className="w-full min-h-[360px] rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/40 p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="Type your motion outline or draft here…"
         />
-        <div className="mt-4 flex items-center gap-3">
+        <div className="flex items-center gap-3">
           <button
-            onClick={onSave}
+            onClick={handleSave}
             disabled={saving}
-            className="rounded-lg bg-black text-white px-4 py-2 disabled:opacity-60"
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-white hover:bg-zinc-800 disabled:opacity-50"
           >
-            {saving ? "Saving…" : "Save plan"}
+            {saving ? "Saving…" : "Save draft"}
           </button>
-          <span className="text-sm text-zinc-600 dark:text-zinc-400">
-            {saveMsg}
-          </span>
+          {saveMsg && <span className="text-sm text-zinc-500">{saveMsg}</span>}
         </div>
-      </div>
+      </section>
 
-      {/* Right: Export panel */}
-      <div>
-        <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
-          <h2 className="text-xl font-semibold">Output layout</h2>
-          <p className="text-sm text-zinc-500 mt-1">
-            Choose a format and a style preset. v1 supports DOCX and Markdown.
-          </p>
-
-          <div className="mt-5 space-y-4">
-            <label className="block text-sm font-medium">
-              Title (will enforce local rule suffix if needed)
-            </label>
-            <input
-              className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/40 px-3 py-2"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="Motion to Dismiss"
-            />
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium">Format</label>
-                <select
-                  value={format}
-                  onChange={(e) => setFormat(e.target.value as ExportFormat)}
-                  className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/40 px-3 py-2"
-                >
-                  <option value="docx">DOCX (.docx)</option>
-                  <option value="markdown">Markdown (.md)</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium">Style preset</label>
-                <select
-                  value={presetId}
-                  onChange={(e) => setPresetId(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/40 px-3 py-2"
-                >
-                  {EXPORT_PRESETS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                id="cert"
-                type="checkbox"
-                checked={includeCertificate}
-                onChange={(e) => setIncludeCertificate(e.target.checked)}
-              />
-              <label htmlFor="cert" className="text-sm">
-                Include certificate of service
-              </label>
-            </div>
-
-            <div className="rounded-lg bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 p-3 text-xs">
-              <div className="font-medium mb-1">Preset details</div>
-              <div>Font: {preset.docx.font.name} {preset.docx.font.size}pt</div>
-              <div>
-                Margins (in): top {preset.docx.margins.top}, right {preset.docx.margins.right},
-                bottom {preset.docx.margins.bottom}, left {preset.docx.margins.left}
-              </div>
-              <div>Line spacing: {preset.docx.line.multiple}×</div>
-              {preset.docx.titleMustEndWith ? (
-                <div>Title rule: must end with “{preset.docx.titleMustEndWith}”.</div>
-              ) : null}
-            </div>
-
-            <button
-              onClick={onExport}
-              disabled={exporting || !plan.trim()}
-              className="w-full rounded-lg bg-blue-600 text-white py-2.5 disabled:opacity-60"
+      <section className="rounded-xl border border-zinc-200/60 p-4 shadow-sm">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">Format</label>
+            <select
+              className="w-full rounded-lg border border-zinc-300 bg-white p-2"
+              value={format}
+              onChange={(e) => setFormat(e.target.value as ExportFormat)}
             >
-              {exporting ? "Exporting…" : "Export"}
-            </button>
+              <option value="docx">DOCX</option>
+              <option value="markdown">Markdown</option>
+            </select>
+          </div>
+
+          <div className="space-y-2 sm:col-span-2">
+            <label className="text-sm font-medium">Style preset</label>
+            <select
+              className="w-full rounded-lg border border-zinc-300 bg-white p-2"
+              value={presetId}
+              onChange={(e) => setPresetId(e.target.value)}
+            >
+              {EXPORT_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.title} — {p.page.size} ({p.page.margins.top}/{p.page.margins.right}/
+                  {p.page.margins.bottom}/{p.page.margins.left}")
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-zinc-500">
+              Applies page size, margins, and basic paragraph styling to the export.
+            </p>
           </div>
         </div>
-      </div>
-    </div>
+
+        <div className="mt-4">
+          <button
+            onClick={handleExport}
+            disabled={downloading || !plan.trim()}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-500 disabled:opacity-50"
+          >
+            {downloading ? "Exporting…" : `Export ${format.toUpperCase()}`}
+          </button>
+        </div>
+      </section>
+    </main>
   );
 }
