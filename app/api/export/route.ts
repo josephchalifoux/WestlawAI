@@ -1,206 +1,92 @@
 // app/api/export/route.ts
 export const runtime = "nodejs";
 
-import { NextRequest } from "next/server";
-import { getPreset, type ExportFormat } from "../../../lib/export/presets";
-import { Document, Packer, Paragraph, TextRun, AlignmentType, HeadingLevel, PageOrientation } from "docx";
-import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-
-type Block = { type: "heading" | "paragraph"; text: string };
-type ExportBody = {
-  title?: string;
-  presetId?: string;
-  format?: ExportFormat; // "docx" | "pdf"
-  blocks?: Block[];      // simple linear blocks for v1
-};
+import {
+  AlignmentType,
+  Document,
+  Packer,
+  Paragraph,
+  PageOrientation,
+} from "docx";
 
 function inches(n: number) {
-  // docx expects TWIP (twentieth of a point). 1 inch = 72 pt = 1440 twip
-  return n * 1440;
+  return Math.round(n * 1440); // twips
 }
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = (await req.json()) as ExportBody;
-    const preset = getPreset(body.presetId);
-    const format: ExportFormat = body.format ?? "docx";
-    const title = body.title?.trim() || "Pleading";
-    const blocks: Block[] = body.blocks?.length
-      ? body.blocks
-      : [{ type: "heading", text: title }, { type: "paragraph", text: "…" }];
+type ExportFormat = "DOCX" | "PDF";
+type PresetKey = "letter" | "legal" | "a4";
 
-    if (format === "docx") {
-      const doc = new Document({
-        sections: [
-          {
-            properties: {
-              page: {
-                margin: {
-                  top: inches(preset.margins.top),
-                  right: inches(preset.margins.right),
-                  bottom: inches(preset.margins.bottom),
-                  left: inches(preset.margins.left)
-                },
-                orientation: PageOrientation.PORTRAIT
-              }
-            },
-            children: [
-              // optional header/caption (lightweight v1)
-              ...(preset.header?.enabled && preset.header.text
-                ? [
-                    new Paragraph({
-                      alignment:
-                        preset.header.align === "center"
-                          ? AlignmentType.CENTER
-                          : preset.header.align === "right"
-                          ? AlignmentType.RIGHT
-                          : AlignmentType.LEFT,
-                      children: [
-                        new TextRun({
-                          text: preset.header.text,
-                          bold: true,
-                          size: preset.fontSize * 2
-                        })
-                      ]
-                    })
-                  ]
-                : []),
+const presets: Record<
+  PresetKey,
+  { widthIn: number; heightIn: number; margins: { top: number; right: number; bottom: number; left: number } }
+> = {
+  letter: { widthIn: 8.5, heightIn: 11, margins: { top: 1, right: 1, bottom: 1, left: 1 } },
+  legal:  { widthIn: 8.5, heightIn: 14, margins: { top: 1, right: 1, bottom: 1, left: 1 } },
+  a4:     { widthIn: 8.27, heightIn: 11.69, margins: { top: 1, right: 1, bottom: 1, left: 1 } },
+};
 
-              ...(preset.caption?.enabled && preset.caption.text
-                ? [
-                    new Paragraph({
-                      spacing: { after: 200 },
-                      children: [
-                        new TextRun({
-                          text: preset.caption.text,
-                          italics: true,
-                          size: preset.fontSize * 2
-                        })
-                      ]
-                    })
-                  ]
-                : []),
+interface ExportBody {
+  text?: string;           // the content we export
+  format?: ExportFormat;   // "DOCX" | "PDF"
+  preset?: PresetKey;      // "letter" | "legal" | "a4"
+}
 
-              // content blocks
-              ...blocks.map((b) => {
-                const base = {
-                  spacing: { line: preset.lineSpacing * 240 }, // 240 = single
-                  children: [
-                    new TextRun({
-                      text: b.text,
-                      size: preset.fontSize * 2,
-                      font: preset.fontFamily
-                    })
-                  ]
-                };
+export async function POST(req: Request) {
+  const body = (await req.json().catch(() => ({}))) as ExportBody;
 
-                if (b.type === "heading") {
-                  return new Paragraph({
-                    ...base,
-                    alignment: AlignmentType.CENTER,
-                    heading: HeadingLevel.TITLE,
-                    spacing: { after: 240, line: preset.lineSpacing * 240 },
-                    children: [
-                      new TextRun({
-                        text: b.text,
-                        bold: true,
-                        size: (preset.fontSize + 2) * 2,
-                        font: preset.fontFamily
-                      })
-                    ]
-                  });
-                }
+  const text = body.text?.trim() ?? "No content provided.";
+  const format: ExportFormat = (body.format ?? "DOCX").toUpperCase() as ExportFormat;
+  const presetKey: PresetKey = (body.preset ?? "letter").toLowerCase() as PresetKey;
 
-                return new Paragraph(base);
-              })
-            ]
-          }
-        ]
-      });
+  const preset = presets[presetKey] ?? presets.letter;
 
-      const buf = await Packer.toBuffer(doc);
-      return new Response(buf, {
-        status: 200,
-        headers: {
-          "Content-Type":
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "Content-Disposition": `attachment; filename="${title.replace(/\s+/g, "_")}.docx"`
-        }
-      });
-    }
-
-    // Simple PDF using pdf-lib (layout-aware v2 can follow later)
-    const pdf = await PDFDocument.create();
-    const page = pdf.addPage([612, 792]); // Letter
-    const font = await pdf.embedFont(StandardFonts.TimesRoman);
-    const { width } = page.getSize();
-
-    const left = 72 * preset.margins.left;
-    const right = 72 * preset.margins.right;
-    const top = 792 - 72 * preset.margins.top;
-    const maxWidth = width - left - right;
-
-    let y = top;
-
-    const drawWrapped = (text: string, size: number, bold = false) => {
-      const words = text.split(/\s+/);
-      let line = "";
-      const lineHeight = size * preset.lineSpacing * 1.2;
-
-      for (const w of words) {
-        const trial = line ? `${line} ${w}` : w;
-        const trialWidth = font.widthOfTextAtSize(trial, size);
-        if (trialWidth > maxWidth) {
-          page.drawText(line, {
-            x: left,
-            y,
-            size,
-            font,
-            color: rgb(0, 0, 0)
-          });
-          y -= lineHeight;
-          line = w;
-        } else {
-          line = trial;
-        }
-      }
-      if (line) {
-        page.drawText(line, { x: left, y, size, font, color: rgb(0, 0, 0) });
-        y -= lineHeight;
-      }
-    };
-
-    // simple header/caption
-    if (preset.header?.enabled && preset.header.text) {
-      drawWrapped(preset.header.text, preset.fontSize + 2, true);
-      y -= 6;
-    }
-    if (preset.caption?.enabled && preset.caption.text) {
-      drawWrapped(preset.caption.text, preset.fontSize, false);
-      y -= 6;
-    }
-
-    for (const b of blocks) {
-      if (b.type === "heading") {
-        drawWrapped(b.text, preset.fontSize + 2, true);
-        y -= 6;
-      } else {
-        drawWrapped(b.text, preset.fontSize, false);
-      }
-    }
-
-    const bytes = await pdf.save();
-    return new Response(bytes, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="${title.replace(/\s+/g, "_")}.pdf"`
-      }
-    });
-  } catch (err: any) {
+  if (format === "PDF") {
+    // (PDF pipeline will be added later.)
     return new Response(
-      JSON.stringify({ error: err?.message || "Export failed" }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      JSON.stringify({ ok: false, message: "PDF export coming next." }),
+      { status: 501, headers: { "content-type": "application/json" } }
     );
   }
+
+  // --- DOCX export ---
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            margin: {
+              top: inches(preset.margins.top),
+              right: inches(preset.margins.right),
+              bottom: inches(preset.margins.bottom),
+              left: inches(preset.margins.left),
+            },
+            size: {
+              width: inches(preset.widthIn),
+              height: inches(preset.heightIn),
+              // ✅ orientation must be nested under size (or omit it to keep Portrait)
+              orientation: PageOrientation.PORTRAIT,
+            },
+          },
+        },
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.LEFT,
+            children: [],
+            text,
+          }),
+        ],
+      },
+    ],
+  });
+
+  const buffer = await Packer.toBuffer(doc);
+  return new Response(buffer, {
+    status: 200,
+    headers: {
+      "content-type":
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "content-disposition": `attachment; filename="westlawai.docx"`,
+      "cache-control": "no-store",
+    },
+  });
 }
