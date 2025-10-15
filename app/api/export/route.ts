@@ -1,4 +1,6 @@
 // app/api/export/route.ts
+export const runtime = "nodejs";
+
 import { NextRequest } from "next/server";
 import {
   AlignmentType,
@@ -9,159 +11,105 @@ import {
   Paragraph,
   TextRun,
 } from "docx";
-import { DEFAULT_PRESET_ID, EXPORT_PRESETS } from "@/lib/export-presets";
+import { DEFAULT_PRESET_ID, EXPORT_PRESETS } from "../../../lib/export-presets";
 
 // Helpers
-const inches = (n: number) => Math.round(n * 1440); // DOCX uses twips (1/20 pt) = 1440 per inch
-
-function ensureSuffix(title: string, required?: string) {
-  if (!required) return title.trim();
-  const t = title.trim();
-  const req = required.toLowerCase();
-  return t.toLowerCase().endsWith(req) ? t : `${t} ${required}`.trim();
+const TWIPS_PER_INCH = 1440;
+function inches(n: number) {
+  return Math.round(n * TWIPS_PER_INCH);
 }
-
-function toParagraphs(text: string, fontName: string, fontSize: number, lineMultiple: number) {
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
-  return lines.map((line) => {
-    // simple bullets if line starts with "- " or "* "
-    const bullet =
-      line.trimStart().startsWith("- ") || line.trimStart().startsWith("* ");
-    const content = bullet ? line.trimStart().slice(2) : line;
-
-    return new Paragraph({
-      text: content,
-      bullet: bullet ? { level: 0 } : undefined,
-      spacing: { line: lineMultiple * 240 }, // 240 = single line
-      children: [
-        new TextRun({
-          text: content,
-          font: fontName,
-          size: fontSize * 2, // docx size is half-points
-        }),
-      ],
-    });
-  });
+function ensureSuffix(title: string, requiredExt: string) {
+  const t = (title || "Draft").trim() || "Draft";
+  return t.toLowerCase().endsWith(`.${requiredExt}`)
+    ? t
+    : `${t}.${requiredExt}`;
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
+  const body = await req.json().catch(() => ({}));
+  const {
+    title = "Draft",
+    content = "",
+    format = "docx",
+    presetId = DEFAULT_PRESET_ID,
+  } = body || {};
 
-    const format = (body?.format as "docx" | "markdown") ?? "docx";
-    const presetId = (body?.presetId as string) ?? DEFAULT_PRESET_ID;
+  const preset = EXPORT_PRESETS.find((p) => p.id === presetId) ?? EXPORT_PRESETS[0];
 
-    const text: string = body?.text ?? "";
-    const titleRaw: string = body?.title ?? "Untitled";
-    const includeCertificate: boolean = !!body?.includeCertificate;
-
-    const preset = EXPORT_PRESETS.find((p) => p.id === presetId) ?? EXPORT_PRESETS[0];
-    const title = ensureSuffix(titleRaw, preset.docx.titleMustEndWith);
-
-    if (format === "markdown") {
-      const md = `# ${title}\n\n${text}\n${
-        includeCertificate
-          ? `\n---\n**Certificate of Service.** I certify that a true and correct copy of the foregoing was served on all parties via e-service on ${new Date()
-              .toISOString()
-              .slice(0, 10)}.`
-          : ""
-      }\n`;
-      return new Response(md, {
-        headers: {
-          "Content-Type": "text/markdown; charset=utf-8",
-          "Content-Disposition": `attachment; filename="${title
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, "-")
-            .replace(/(^-|-$)/g, "")}.md"`,
-        },
-      });
-    }
-
-    // DOCX
-    const { margins, font, line, page } = preset.docx;
-
-    const doc = new Document({
-      sections: [
-        {
-          properties: {
-            page: {
-              size: page === "A4" ? PageSize.A4 : PageSize.LETTER,
-              margin: {
-                top: inches(margins.top),
-                right: inches(margins.right),
-                bottom: inches(margins.bottom),
-                left: inches(margins.left),
-              },
-            },
-          },
-          children: [
-            new Paragraph({
-              text: title,
-              heading: HeadingLevel.HEADING_1,
-              alignment: AlignmentType.CENTER,
-              spacing: { line: line.multiple * 240, after: 200 },
-              children: [
-                new TextRun({
-                  text: title,
-                  bold: true,
-                  font: font.name,
-                  size: font.size * 2,
-                }),
-              ],
-            }),
-            ...toParagraphs(text, font.name, font.size, line.multiple),
-            ...(includeCertificate
-              ? [
-                  new Paragraph({ text: "", pageBreakBefore: true }),
-                  new Paragraph({
-                    text: "Certificate of Service",
-                    heading: HeadingLevel.HEADING_2,
-                    spacing: { line: line.multiple * 240, after: 200 },
-                    alignment: AlignmentType.LEFT,
-                    children: [
-                      new TextRun({
-                        text: "Certificate of Service",
-                        bold: true,
-                        font: font.name,
-                        size: font.size * 2,
-                      }),
-                    ],
-                  }),
-                  new Paragraph({
-                    children: [
-                      new TextRun({
-                        text:
-                          "I certify that a true and correct copy of the foregoing was served on all parties via e-service on " +
-                          new Date().toLocaleDateString() +
-                          ".",
-                        font: font.name,
-                        size: font.size * 2,
-                      }),
-                    ],
-                    spacing: { line: line.multiple * 240 },
-                  }),
-                ]
-              : []),
-          ],
-        },
-      ],
-    });
-
-    const buf = await Packer.toBuffer(doc);
-
-    const safe = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-    return new Response(buf, {
+  // Markdown path: return plain text with a filename header so the client can download directly
+  if (format === "markdown") {
+    const filename = ensureSuffix(title, "md");
+    return new Response(content || "", {
       headers: {
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="${safe}.docx"`,
+        "Content-Type": "text/markdown; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
-  } catch (err: any) {
-    console.error("Export error:", err);
-    return new Response(
-      JSON.stringify({ error: "Failed to export", detail: String(err?.message || err) }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
   }
+
+  // DOCX path
+  const blocks: Paragraph[] = [];
+
+  // Very simple split: blank lines create spacing; first line becomes a heading.
+  const lines = (content || "").split(/\r?\n/);
+  lines.forEach((line, idx) => {
+    const text = (line ?? "").replace(/\t/g, "    ");
+    if (!text.trim()) {
+      blocks.push(new Paragraph({ text: "", spacing: { after: 200 } }));
+    } else if (idx === 0) {
+      blocks.push(
+        new Paragraph({
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.LEFT,
+          children: [new TextRun({ text, bold: true })],
+          spacing: { after: 300 },
+        })
+      );
+    } else {
+      blocks.push(
+        new Paragraph({
+          alignment: AlignmentType.LEFT,
+          spacing: { after: 120 },
+          children: [new TextRun({ text })],
+        })
+      );
+    }
+  });
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            size:
+              preset.page.size === "LETTER"
+                ? { width: PageSize.Letter.width, height: PageSize.Letter.height }
+                : preset.page.size === "LEGAL"
+                ? { width: PageSize.Legal.width, height: PageSize.Legal.height }
+                : { width: PageSize.A4.width, height: PageSize.A4.height },
+            margin: {
+              top: inches(preset.page.margins.top),
+              right: inches(preset.page.margins.right),
+              bottom: inches(preset.page.margins.bottom),
+              left: inches(preset.page.margins.left),
+            },
+          },
+        },
+        children: blocks,
+      },
+    ],
+  });
+
+  const buffer = await Packer.toBuffer(doc);
+  const filename = ensureSuffix(title, "docx");
+
+  return new Response(buffer, {
+    status: 200,
+    headers: {
+      "Content-Type":
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Length": String(buffer.byteLength),
+    },
+  });
 }
