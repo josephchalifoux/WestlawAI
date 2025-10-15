@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": false,
+    "allowJs": true,
     "skipLibCheck": true,
     "strict": false,
     "noEmit": true,
@@ -12,12 +12,15 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
+    "incremental": true,
 
+    // 👇 these two lines make "@/..." imports work
     "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
     },
 
+    // Next.js adds this; keep it
     "plugins": [{ "name": "next" }]
   },
   "include": [
