@@ -1,218 +1,226 @@
 // app/draft/page.tsx
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { DEFAULT_PRESET_ID, EXPORT_PRESETS } from "@/lib/export-presets";
 
-// Simple “court style” suggestions (MVP)
-const COURT_PRESETS: Record<
-  string,
-  { font: string; size: number; margin: number; caption: string }
-> = {
-  default: { font: "Times New Roman", size: 12, margin: 1.0, caption: "Standard" },
-  florida: { font: "Times New Roman", size: 12, margin: 1.0, caption: "Florida Standard" },
-  federal: { font: "Times New Roman", size: 12, margin: 1.0, caption: "Federal Rule Style" },
-};
+type ExportFormat = "docx" | "markdown";
 
 export default function DraftPage() {
-  const [userId, setUserId] = useState<string | null>(null);
-  const [plan, setPlan] = useState("");
+  const supabase = useMemo(() => createClient(), []);
+  const [plan, setPlan] = useState<string>("");
   const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
-  const [court, setCourt] = useState("default");
+  const [saveMsg, setSaveMsg] = useState<string>("");
 
-  // Layout presets
-  const [font, setFont] = useState("Times New Roman");
-  const [size, setSize] = useState(12);
-  const [margin, setMargin] = useState(1.0);
-  const [caption, setCaption] = useState("Standard");
-  const [format, setFormat] = useState<"PDF" | "DOCX">("PDF");
+  // Export UI state
+  const [format, setFormat] = useState<ExportFormat>("docx");
+  const [presetId, setPresetId] = useState<string>(DEFAULT_PRESET_ID);
+  const [title, setTitle] = useState<string>("Motion to Dismiss");
+  const [includeCertificate, setIncludeCertificate] = useState<boolean>(true);
+  const [exporting, setExporting] = useState(false);
+  const preset = EXPORT_PRESETS.find((p) => p.id === presetId) ?? EXPORT_PRESETS[0];
 
+  // Optional: restore last typed plan from localStorage (nice UX when navigating)
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+    const cached = localStorage.getItem("wlai.plan");
+    if (cached) setPlan(cached);
   }, []);
+  useEffect(() => {
+    localStorage.setItem("wlai.plan", plan || "");
+  }, [plan]);
 
-  const layout = useMemo(
-    () => ({ font, size, margin, caption, format }),
-    [font, size, margin, caption, format]
-  );
-
-  function suggestByCourt() {
-    const key = court.toLowerCase().includes("fed")
-      ? "federal"
-      : court.toLowerCase().includes("florida")
-      ? "florida"
-      : "default";
-    const p = COURT_PRESETS[key];
-    setFont(p.font);
-    setSize(p.size);
-    setMargin(p.margin);
-    setCaption(p.caption);
-  }
-
-  async function ensureCase(): Promise<string> {
-    const { data: cases, error } = await supabase
-      .from("cases")
-      .select("id")
-      .order("created_at", { ascending: true })
-      .limit(1);
-    if (error) throw error;
-    if (cases && cases.length) return cases[0].id;
-
-    const { data: ins, error: insErr } = await supabase
-      .from("cases")
-      .insert([{ title: "Default Case", user_id: userId }])
-      .select("id")
-      .single();
-    if (insErr) throw insErr;
-    return ins.id;
-  }
-
-  async function onSavePlan() {
-    if (!userId) {
-      setMsg("Please sign in first.");
-      return;
-    }
-    setSaving(true);
-    setMsg(null);
+  async function onSave() {
     try {
-      const caseId = await ensureCase();
-      const payload = {
-        user_id: userId,
-        case_id: caseId,
+      setSaving(true);
+      setSaveMsg("");
+      // Attempt to persist to your existing tables (best effort).
+      const { data: { user } = { user: null } } = await supabase.auth.getUser();
+      if (!user) {
+        setSaveMsg("Saved locally. (Sign in to save to your account.)");
+        return;
+      }
+      // Create or reuse a case
+      const { data: caseRow, error: caseErr } = await supabase
+        .from("cases")
+        .upsert(
+          { title: "Untitled Case", user_id: user.id },
+          { onConflict: "title,user_id" }
+        )
+        .select()
+        .limit(1)
+        .single();
+
+      if (caseErr) {
+        setSaveMsg("Saved locally. (Supabase case write skipped.)");
+        return;
+      }
+
+      const { error: docErr } = await supabase.from("documents").insert({
+        case_id: caseRow.id,
         kind: "plan",
-        title: "Planning Session",
-        content: { text: plan, layout },
-      };
-      const { error } = await supabase.from("documents").insert([payload]);
-      if (error) throw error;
-      setMsg("Saved to your account.");
-    } catch (e: any) {
-      setMsg(e.message || "Save failed");
+        content: plan,
+      });
+
+      if (docErr) {
+        setSaveMsg("Saved locally. (Supabase doc write skipped.)");
+      } else {
+        setSaveMsg("Saved to your account.");
+      }
+    } catch {
+      setSaveMsg("Saved locally.");
     } finally {
       setSaving(false);
+      setTimeout(() => setSaveMsg(""), 4000);
     }
   }
 
-  async function onExportStub() {
+  async function onExport() {
     try {
+      setExporting(true);
       const res = await fetch("/api/export", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: plan, layout, format }),
+        body: JSON.stringify({
+          format,
+          presetId,
+          title,
+          text: plan,
+          includeCertificate,
+        }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const e = await res.text();
+        alert("Export failed: " + e);
+        return;
+      }
+
       const blob = await res.blob();
+      const filename =
+        title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "") +
+        (format === "docx" ? ".docx" : ".md");
+
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = format === "PDF" ? "westlawai-export.pdf.txt" : "westlawai-export.docx.txt";
+      a.download = filename || "export";
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       URL.revokeObjectURL(url);
-    } catch (e) {
-      setMsg("Export stub failed");
+    } finally {
+      setExporting(false);
     }
   }
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-6 sm:px-8 py-10 grid grid-cols-1 gap-10 md:grid-cols-12">
-      <div className="md:col-span-8">
-        <h1 className="text-2xl font-semibold tracking-tight">Plan (conversation)</h1>
+    <div className="mx-auto max-w-6xl px-6 py-8 grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Left: editor */}
+      <div>
+        <h1 className="text-2xl font-semibold mb-3">Plan (conversation)</h1>
         <textarea
           value={plan}
           onChange={(e) => setPlan(e.target.value)}
-          rows={12}
-          placeholder="Describe the matter, claims, defenses, goals, & constraints…"
-          className="mt-4 w-full rounded-xl border border-zinc-300 p-4 outline-none focus:ring-2 focus:ring-zinc-900"
+          placeholder="Start outlining what you want the pleading to say..."
+          className="w-full min-h-[360px] rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/40 p-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
-        <button
-          onClick={onSavePlan}
-          disabled={saving}
-          className="mt-4 inline-flex items-center gap-2 rounded-full border border-zinc-900 px-5 py-2 text-sm font-medium hover:bg-zinc-900 hover:text-white transition-colors disabled:opacity-40"
-        >
-          {saving ? "Saving…" : "Save plan"}
-        </button>
-        {msg && <p className="mt-3 text-sm text-zinc-700">{msg}</p>}
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            onClick={onSave}
+            disabled={saving}
+            className="rounded-lg bg-black text-white px-4 py-2 disabled:opacity-60"
+          >
+            {saving ? "Saving…" : "Save plan"}
+          </button>
+          <span className="text-sm text-zinc-600 dark:text-zinc-400">
+            {saveMsg}
+          </span>
+        </div>
       </div>
 
-      <aside className="md:col-span-4">
-        <div className="rounded-2xl border border-zinc-200 p-4">
-          <h2 className="text-base font-semibold tracking-tight">Output layout</h2>
-          <p className="mt-1 text-sm text-zinc-700">Presets coming next. Export is stubbed for now.</p>
+      {/* Right: Export panel */}
+      <div>
+        <div className="rounded-2xl border border-zinc-200 dark:border-zinc-800 p-5">
+          <h2 className="text-xl font-semibold">Output layout</h2>
+          <p className="text-sm text-zinc-500 mt-1">
+            Choose a format and a style preset. v1 supports DOCX and Markdown.
+          </p>
 
-          <div className="mt-4 space-y-3 text-sm">
-            <label className="block">
-              <span className="text-zinc-700">Court / Judge (for suggestions)</span>
-              <input
-                value={court}
-                onChange={(e) => setCourt(e.target.value)}
-                placeholder="e.g., Florida Circuit, Judge Smith"
-                className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 outline-none focus:ring-2 focus:ring-zinc-900"
-              />
+          <div className="mt-5 space-y-4">
+            <label className="block text-sm font-medium">
+              Title (will enforce local rule suffix if needed)
             </label>
-            <button
-              onClick={suggestByCourt}
-              className="rounded-full border border-zinc-900 px-4 py-2 font-medium hover:bg-zinc-900 hover:text-white transition-colors"
-            >
-              Suggest by court
-            </button>
+            <input
+              className="w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/40 px-3 py-2"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Motion to Dismiss"
+            />
 
-            <div className="grid grid-cols-2 gap-3">
-              <label className="block">
-                <span className="text-zinc-700">Font</span>
-                <select value={font} onChange={(e) => setFont(e.target.value)} className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2">
-                  <option>Times New Roman</option>
-                  <option>Arial</option>
-                  <option>Calibri</option>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium">Format</label>
+                <select
+                  value={format}
+                  onChange={(e) => setFormat(e.target.value as ExportFormat)}
+                  className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/40 px-3 py-2"
+                >
+                  <option value="docx">DOCX (.docx)</option>
+                  <option value="markdown">Markdown (.md)</option>
                 </select>
-              </label>
-              <label className="block">
-                <span className="text-zinc-700">Size</span>
-                <select value={size} onChange={(e) => setSize(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2">
-                  <option value={11}>11</option>
-                  <option value={12}>12</option>
-                  <option value={14}>14</option>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium">Style preset</label>
+                <select
+                  value={presetId}
+                  onChange={(e) => setPresetId(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white/80 dark:bg-zinc-900/40 px-3 py-2"
+                >
+                  {EXPORT_PRESETS.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.label}
+                    </option>
+                  ))}
                 </select>
-              </label>
-              <label className="block">
-                <span className="text-zinc-700">Margins (inches)</span>
-                <select value={margin} onChange={(e) => setMargin(Number(e.target.value))} className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2">
-                  <option value={1.0}>1.0</option>
-                  <option value={1.25}>1.25</option>
-                  <option value={1.5}>1.5</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className="text-zinc-700">Caption</span>
-                <select value={caption} onChange={(e) => setCaption(e.target.value)} className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2">
-                  <option>Standard</option>
-                  <option>Florida Standard</option>
-                  <option>Federal Rule Style</option>
-                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <input
+                id="cert"
+                type="checkbox"
+                checked={includeCertificate}
+                onChange={(e) => setIncludeCertificate(e.target.checked)}
+              />
+              <label htmlFor="cert" className="text-sm">
+                Include certificate of service
               </label>
             </div>
 
-            <label className="block">
-              <span className="text-zinc-700">Format</span>
-              <select value={format} onChange={(e) => setFormat(e.target.value as any)} className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2">
-                <option>PDF</option>
-                <option>DOCX</option>
-              </select>
-            </label>
+            <div className="rounded-lg bg-zinc-50 dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800 p-3 text-xs">
+              <div className="font-medium mb-1">Preset details</div>
+              <div>Font: {preset.docx.font.name} {preset.docx.font.size}pt</div>
+              <div>
+                Margins (in): top {preset.docx.margins.top}, right {preset.docx.margins.right},
+                bottom {preset.docx.margins.bottom}, left {preset.docx.margins.left}
+              </div>
+              <div>Line spacing: {preset.docx.line.multiple}×</div>
+              {preset.docx.titleMustEndWith ? (
+                <div>Title rule: must end with “{preset.docx.titleMustEndWith}”.</div>
+              ) : null}
+            </div>
 
             <button
-              onClick={onExportStub}
-              className="mt-3 w-full rounded-full border border-zinc-900 px-4 py-2 font-medium hover:bg-zinc-900 hover:text-white transition-colors"
+              onClick={onExport}
+              disabled={exporting || !plan.trim()}
+              className="w-full rounded-lg bg-blue-600 text-white py-2.5 disabled:opacity-60"
             >
-              Export (stub)
+              {exporting ? "Exporting…" : "Export"}
             </button>
           </div>
         </div>
-      </aside>
+      </div>
     </div>
   );
 }
