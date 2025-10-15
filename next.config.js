@@ -1,11 +1,22 @@
+// next.config.js
+const path = require("path");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: { typedRoutes: true },
-  async rewrites() {
-    return [
-      // Old endpoint -> new clean endpoint
-      { source: '/api/upload', destination: '/api/file-upload' },
-    ];
+  reactStrictMode: false,
+
+  // Ensure the "@/..." alias always resolves in CI/Prod
+  webpack: (config) => {
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      "@": path.resolve(__dirname),
+    };
+    return config;
+  },
+
+  // Keep typedRoutes if you had it enabled earlier via experimental
+  experimental: {
+    typedRoutes: true,
   },
 };
 
