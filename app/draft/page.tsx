@@ -14,7 +14,6 @@ export default function DraftPage() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string>("");
 
-  // Export UI state
   const [format, setFormat] = useState<ExportFormat>("docx");
   const [presetId, setPresetId] = useState<string>(DEFAULT_PRESET_ID);
   const preset = useMemo(
@@ -23,16 +22,14 @@ export default function DraftPage() {
   );
   const [downloading, setDownloading] = useState(false);
 
-  // Example: load any draft content you already have
   useEffect(() => {
-    // no-op placeholder – wire to Supabase if/when you want
+    // placeholder for future Supabase reads
   }, [supabase]);
 
   async function handleSave() {
     try {
       setSaving(true);
       setSaveMsg("");
-      // TODO: save to Supabase or your storage
       await new Promise((r) => setTimeout(r, 400));
       setSaveMsg("Saved.");
     } catch (e: any) {
@@ -57,13 +54,8 @@ export default function DraftPage() {
         }),
       });
 
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || "Export failed");
-      }
+      if (!res.ok) throw new Error((await res.text()) || "Export failed");
 
-      // For docx the API returns a binary. For markdown it streams text with a
-      // Content-Disposition header so both paths can be handled the same here.
       const blob = await res.blob();
       const filename =
         res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ??
@@ -89,7 +81,7 @@ export default function DraftPage() {
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">Draft</h1>
         <p className="text-sm text-zinc-500">
-          Write your plan here, then export as a formatted DOCX or Markdown using presets.
+          Write your plan here, then export as DOCX or Markdown using presets.
         </p>
       </header>
 
