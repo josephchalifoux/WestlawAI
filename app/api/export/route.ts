@@ -13,32 +13,21 @@ import {
 } from "docx";
 import { DEFAULT_PRESET_ID, EXPORT_PRESETS } from "../../../lib/export-presets";
 
-// Helpers
 const TWIPS_PER_INCH = 1440;
-function inches(n: number) {
-  return Math.round(n * TWIPS_PER_INCH);
-}
-function ensureSuffix(title: string, requiredExt: string) {
-  const t = (title || "Draft").trim() || "Draft";
-  return t.toLowerCase().endsWith(`.${requiredExt}`)
-    ? t
-    : `${t}.${requiredExt}`;
-}
+const inches = (n: number) => Math.round(n * TWIPS_PER_INCH);
+const withExt = (title: string, ext: "docx" | "md") =>
+  (title?.trim() || "Draft").toLowerCase().endsWith(`.${ext}`)
+    ? title.trim()
+    : `${(title || "Draft").trim()}.${ext}`;
 
 export async function POST(req: NextRequest) {
-  const body = await req.json().catch(() => ({}));
-  const {
-    title = "Draft",
-    content = "",
-    format = "docx",
-    presetId = DEFAULT_PRESET_ID,
-  } = body || {};
+  const { title = "Draft", content = "", format = "docx", presetId = DEFAULT_PRESET_ID } =
+    (await req.json().catch(() => ({}))) || {};
 
   const preset = EXPORT_PRESETS.find((p) => p.id === presetId) ?? EXPORT_PRESETS[0];
 
-  // Markdown path: return plain text with a filename header so the client can download directly
   if (format === "markdown") {
-    const filename = ensureSuffix(title, "md");
+    const filename = withExt(title, "md");
     return new Response(content || "", {
       headers: {
         "Content-Type": "text/markdown; charset=utf-8",
@@ -47,17 +36,15 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // DOCX path
-  const blocks: Paragraph[] = [];
-
-  // Very simple split: blank lines create spacing; first line becomes a heading.
+  const paras: Paragraph[] = [];
   const lines = (content || "").split(/\r?\n/);
-  lines.forEach((line, idx) => {
+
+  lines.forEach((line, i) => {
     const text = (line ?? "").replace(/\t/g, "    ");
     if (!text.trim()) {
-      blocks.push(new Paragraph({ text: "", spacing: { after: 200 } }));
-    } else if (idx === 0) {
-      blocks.push(
+      paras.push(new Paragraph({ text: "", spacing: { after: 200 } }));
+    } else if (i === 0) {
+      paras.push(
         new Paragraph({
           heading: HeadingLevel.HEADING_1,
           alignment: AlignmentType.LEFT,
@@ -66,7 +53,7 @@ export async function POST(req: NextRequest) {
         })
       );
     } else {
-      blocks.push(
+      paras.push(
         new Paragraph({
           alignment: AlignmentType.LEFT,
           spacing: { after: 120 },
@@ -95,16 +82,15 @@ export async function POST(req: NextRequest) {
             },
           },
         },
-        children: blocks,
+        children: paras,
       },
     ],
   });
 
   const buffer = await Packer.toBuffer(doc);
-  const filename = ensureSuffix(title, "docx");
+  const filename = withExt(title, "docx");
 
   return new Response(buffer, {
-    status: 200,
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
