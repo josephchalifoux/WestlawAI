@@ -1,6 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-reactStrictMode: true,
-experimental: { typedRoutes: true }
+  experimental: { typedRoutes: true },
+  async rewrites() {
+    return [
+      // Old endpoint -> new clean endpoint
+      { source: '/api/upload', destination: '/api/file-upload' },
+    ];
+  },
 };
+
 module.exports = nextConfig;
